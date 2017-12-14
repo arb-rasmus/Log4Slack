@@ -29,34 +29,14 @@ namespace Log4Slack {
         }
 
         /// <summary>
-        /// Creates a new instance of SlackClient.
-        /// </summary>
-        /// <param name="urlWithAccessToken">The incoming webhook URL with token.</param>
-        /// <param name="username">The username to post messages as.</param>
-        /// <param name="channel">The channel to post messages to.</param>
-        /// <param name="iconUrl">The URL of an image icon for post</param>
-        /// <param name="iconEmoji">The Emoji icon for post</param>
-        public SlackClient(string urlWithAccessToken, string username, string channel, string iconUrl = null, string iconEmoji = null) {
-            _uri = new Uri(urlWithAccessToken);
-            _username = username;
-            _channel = channel;
-            _iconUrl = iconUrl;
-            _iconEmoji = iconEmoji;
-        }
-
-        /// <summary>
         /// Post a message to Slack.
         /// </summary>
         /// <param name="text">The text of the message.</param>
         /// <param name="proxyAddress">If provided, uses this proxy address when posting payloads.</param>
-        /// <param name="username">If provided, overrides the existing username.</param>
-        /// <param name="channel">If provided, overrides the existing channel.</param>
-        /// <param name="iconUrl"></param>
-        /// <param name="iconEmoji"></param>
         /// <param name="attachments">Optional collection of attachments.</param>
         /// <param name="linknames">Whether or not to link names in the Slack message.</param>
-        public void PostMessageAsync(string text, string proxyAddress, string username = null, string channel = null, string iconUrl = null, string iconEmoji = null, List<Attachment> attachments = null, bool linknames = false) {
-            var payload = BuildPayload(text, username, channel, iconUrl, iconEmoji, attachments, linknames);
+        public void PostMessageAsync(string text, string proxyAddress, List<Attachment> attachments = null) {
+            var payload = BuildPayload(text, attachments);
             PostPayloadAsync(payload, proxyAddress);
         }
 
@@ -64,27 +44,14 @@ namespace Log4Slack {
         /// Builds a payload for Slack.
         /// </summary>
         /// <param name="text"></param>
-        /// <param name="username"></param>
-        /// <param name="channel"></param>
-        /// <param name="iconUrl"></param>
-        /// <param name="iconEmoji"></param>
         /// <param name="attachments"></param>
         /// <param name="linknames"></param>
         /// <returns></returns>
-        private Payload BuildPayload(string text, string username, string channel, string iconUrl, string iconEmoji, List<Attachment> attachments = null, bool linknames = false) {
-            username = string.IsNullOrEmpty(username) ? _username : username;
-            channel = string.IsNullOrEmpty(channel) ? _channel : channel;
-            iconUrl = string.IsNullOrEmpty(iconUrl) ? _iconUrl : iconUrl;
-            iconEmoji = string.IsNullOrEmpty(iconEmoji) ? _iconEmoji : iconEmoji;
+        private Payload BuildPayload(string text, List<Attachment> attachments = null, bool linknames = false) {
 
             var payload = new Payload {
-                Channel = channel,
-                Username = username,
-                IconUrl = iconUrl,
-                IconEmoji = iconEmoji,
                 Text = text,
-                Attachments = attachments,
-                LinkNames = Convert.ToInt32(linknames)
+                Attachments = attachments
             };
 
             return payload;
@@ -95,6 +62,7 @@ namespace Log4Slack {
         /// </summary>
         private void PostPayloadAsync(Payload payload, string proxyAddress) {
             var data = JsonSerializeObject(payload);
+            //data = "{ \"text\": \"Awesome text\", \"attachments\":[{\"title\": \"Awesome title\",\"description\": \"Awesome description\",\"color\": \"#0ABE51\",\"views\": {\"flockml\": \"<strong>Test</strong>\"}}]}";
             PostPayloadAsync(data, proxyAddress);
         }
 
@@ -112,14 +80,15 @@ namespace Log4Slack {
                     request.Proxy = new WebProxy(uri);
                 }
 
-                var encodedForm = string.Format("payload={0}", Uri.EscapeDataString(json));
-                var data = _encoding.GetBytes(encodedForm);
+                var data = _encoding.GetBytes(json);
                 request.ContentLength = data.Length;
+                request.Method = "POST";
+                request.ContentType = "application/json";
 
                 // Get the request stream into which the form data is to 
                 // be written. This is done asynchronously to free up this
                 // thread.
-                
+
                 // NOTE: We maintain a (possibly paranoid) list of 
                 // outstanding requests and add the request to it so that 
                 // it does not get treated as garbage by GC. In effect, 
@@ -195,20 +164,10 @@ namespace Log4Slack {
     /// </summary>
     [DataContract]
     public class Payload {
-        [DataMember(Name = "channel")]
-        public string Channel { get; set; }
-        [DataMember(Name = "username")]
-        public string Username { get; set; }
-        [DataMember(Name = "icon_url")]
-        public string IconUrl { get; set; }
-        [DataMember(Name = "icon_emoji")]
-        public string IconEmoji { get; set; }
         [DataMember(Name = "text")]
         public string Text { get; set; }
         [DataMember(Name = "attachments")]
         public List<Attachment> Attachments { get; set; }
-        [DataMember(Name = "link_names")]
-        public int LinkNames { get; set; }
     }
 
     /// <summary>
@@ -218,22 +177,10 @@ namespace Log4Slack {
     [DataContract]
     public class Attachment {
         /// <summary>
-        /// Required text summary of the attachment that is shown by clients that understand attachments but choose not to show them.
-        /// </summary>
-        [DataMember(Name = "fallback")]
-        public string Fallback { get; set; }
-
-        /// <summary>
-        /// Optional text that should appear above the formatted data.
-        /// </summary>
-        [DataMember(Name = "pretext")]
-        public string PreText { get; set; }
-
-        /// <summary>
         /// Optional text that should appear within the attachment.
         /// </summary>
-        [DataMember(Name = "text")]
-        public string Text { get; set; }
+        [DataMember(Name = "title")]
+        public string Title { get; set; }
 
         /// <summary>
         /// Can either be one of 'good', 'warning', 'danger', or any hex color code.
@@ -244,43 +191,39 @@ namespace Log4Slack {
         /// <summary>
         /// Fields are displayed in a table on the message.
         /// </summary>
-        [DataMember(Name = "fields")]
-        public List<Field> Fields { get; set; }
+        [DataMember(Name = "views")]
+        public View Views { get; set; }
 
-        [DataMember(Name = "mrkdwn_in")]
-        public List<string> MarkdownIn { get; private set; }
-
-        public Attachment(string fallback) {
-            Fallback = fallback;
-            MarkdownIn = new List<string> { "fields" };
+        public Attachment(string title)
+        {
+            Title = title;
         }
+        public Attachment()
+        { }
     }
 
     /// <summary>
     /// Fields are displayed in a table on the message.
     /// </summary>
     [DataContract]
-    public class Field {
-        /// <summary>
-        /// The title may not contain markup and will be escaped for you; required.
-        /// </summary>
-        [DataMember(Name = "title")]
-        public string Title { get; set; }
-        /// <summary>
-        /// Text value of the field. May contain standard message markup and must be escaped as normal; may be multi-line.
-        /// </summary>
-        [DataMember(Name = "value")]
-        public string Value { get; set; }
-        /// <summary>
-        /// Optional flag indicating whether the <paramref name="Value"/> is short enough to be displayed side-by-side with other values.
-        /// </summary>
-        [DataMember(Name = "short")]
-        public bool Short { get; set; }
+    public class View {
+        [DataMember(Name = "html")]
+        public Html Html { get; set; }
 
-        public Field(string Title, string Value = null, bool Short = false) {
-            this.Title = Title;
-            this.Value = Value;
-            this.Short = Short;
+        public View(Html html) {
+            Html = html;
         }
+    }
+
+    [DataContract]
+    public class Html
+    {
+        [DataMember(Name = "inline")]
+        public string Inline { get; set; }
+        [DataMember(Name = "width")]
+        public int Width { get; set; }
+
+        [DataMember(Name = "height")]
+        public int Height { get; set; }
     }
 }
